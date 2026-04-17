@@ -67,7 +67,6 @@ resource "aws_lambda_function" "ec2_resizer" {
   environment {
     variables = {
       SLACK_WEBHOOK_URL = var.slack_webhook_url
-      HOLIDAYS          = jsonencode(var.holidays)
     }
   }
 

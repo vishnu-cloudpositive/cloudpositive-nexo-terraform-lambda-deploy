@@ -23,7 +23,3 @@ variable "servers" {
     upsize_cron   = string
   }))
 }
-
-variable "holidays" {
-  type = list(string)
-}

@@ -3,31 +3,9 @@ import json
 import logging
 import os
 import urllib.request
-from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-
-IST = timezone(timedelta(hours=5, minutes=30))
-
-
-def get_today_ist():
-    return datetime.now(IST)
-
-
-def is_holiday(today_str: str) -> bool:
-    holidays_raw = os.environ.get("HOLIDAYS", "[]")
-    try:
-        holidays = json.loads(holidays_raw)
-    except json.JSONDecodeError:
-        logger.warning("Could not parse HOLIDAYS env var — treating as empty.")
-        holidays = []
-    return today_str in holidays
-
-
-def is_off_day(now: datetime) -> bool:
-    today_str = now.strftime("%Y-%m-%d")
-    return now.weekday() == 6 or is_holiday(today_str)  # 6 = Sunday
 
 
 def send_slack_alert(instance_id, target_type, region, success, reason=""):
@@ -83,16 +61,7 @@ def lambda_handler(event, context):
         send_slack_alert(instance_id, target_type, region, success=False, reason=reason)
         return {"statusCode": 400, "body": reason}
 
-    # ── Off-day check — skip entirely if Mon–Sat and not a holiday ───────────
-    now = get_today_ist()
-    if not is_off_day(now):
-        msg = f"Today ({now.strftime('%A, %Y-%m-%d')}) is a regular weekday — no resize needed."
-        logger.info(msg)
-        return {"statusCode": 200, "body": msg}
-
-    logger.info(f"Off-day confirmed ({now.strftime('%A, %Y-%m-%d')}) — proceeding with resize.")
-
-    # ── Connect to EC2 ────────────────────────────────────────────────────────
+    # ── Fetch instance details ─────────────────────────────────────────────────
     ec2 = boto3.client("ec2", region_name=region)
 
     try:
@@ -106,8 +75,15 @@ def lambda_handler(event, context):
         send_slack_alert(instance_id, target_type, region, success=False, reason=reason)
         return {"statusCode": 400, "body": reason}
 
-    logger.info(f"Instance state: {state} | Current type: {curr_type}")
+    logger.info(f"Instance state: {state} | Current type: {curr_type} | Target type: {target_type}")
 
+    # ── Already the target type — nothing to do ────────────────────────────────
+    if curr_type == target_type:
+        msg = f"Instance {instance_id} is already {target_type}. No change needed."
+        logger.info(msg)
+        return {"statusCode": 200, "body": msg}
+
+    # ── Must be stopped before resizing ───────────────────────────────────────
     if state != "stopped":
         reason = (
             f"Instance `{instance_id}` is in *{state}* state. "
@@ -116,12 +92,6 @@ def lambda_handler(event, context):
         logger.error(reason)
         send_slack_alert(instance_id, target_type, region, success=False, reason=reason)
         return {"statusCode": 400, "body": reason}
-
-    if curr_type == target_type:
-        msg = f"Instance {instance_id} is already {target_type}. Nothing to do."
-        logger.info(msg)
-        send_slack_alert(instance_id, target_type, region, success=True)
-        return {"statusCode": 200, "body": msg}
 
     # ── Resize ────────────────────────────────────────────────────────────────
     try:
