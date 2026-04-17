@@ -4,7 +4,7 @@ data "archive_file" "lambda_zip" {
   output_path = "${path.module}/lambda/lambda_function.zip"
 }
 
-resource "aws_iam_role" "test_role" {
+resource "aws_iam_role" "lambda_role" {
   name = "ec2-resizer-lambda-role"
 
   assume_role_policy = jsonencode({
@@ -28,7 +28,7 @@ resource "aws_iam_role" "test_role" {
 
 resource "aws_iam_role_policy" "lambda_policy" {
   name = "ec2-resizer-policy"
-  role = aws_iam_role.test_role.id
+  role = aws_iam_role.lambda_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -54,11 +54,11 @@ resource "aws_iam_role_policy" "lambda_policy" {
   })
 }
 
-resource "aws_lambda_function" "test" {
+resource "aws_lambda_function" "ec2_resizer" {
   filename         = data.archive_file.lambda_zip.output_path
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
   function_name    = var.function_name
-  role             = aws_iam_role.test_role.arn
+  role             = aws_iam_role.lambda_role.arn
   handler          = "lambda_function.lambda_handler"
   runtime          = "python3.12"
   memory_size      = 128
@@ -100,7 +100,7 @@ resource "aws_iam_role" "scheduler_role" {
         {
           Effect   = "Allow"
           Action   = "lambda:InvokeFunction"
-          Resource = aws_lambda_function.test.arn
+          Resource = aws_lambda_function.ec2_resizer.arn
         }
       ]
     })
@@ -125,7 +125,7 @@ resource "aws_scheduler_schedule" "downsize" {
   schedule_expression_timezone = "Asia/Kolkata"
 
   target {
-    arn      = aws_lambda_function.test.arn
+    arn      = aws_lambda_function.ec2_resizer.arn
     role_arn = aws_iam_role.scheduler_role.arn
 
     input = jsonencode({
@@ -150,7 +150,7 @@ resource "aws_scheduler_schedule" "upsize" {
   schedule_expression_timezone = "Asia/Kolkata"
 
   target {
-    arn      = aws_lambda_function.test.arn
+    arn      = aws_lambda_function.ec2_resizer.arn
     role_arn = aws_iam_role.scheduler_role.arn
 
     input = jsonencode({

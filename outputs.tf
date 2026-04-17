@@ -1,16 +1,16 @@
 output "lambda_function_arn" {
   description = "Lambda function ARN"
-  value       = aws_lambda_function.test.arn
+  value       = aws_lambda_function.ec2_resizer.arn
 }
 
 output "lambda_function_name" {
   description = "Lambda function name"
-  value       = aws_lambda_function.test.function_name
+  value       = aws_lambda_function.ec2_resizer.function_name
 }
 
 output "lambda_role_arn" {
   description = "Lambda IAM role ARN"
-  value       = aws_iam_role.test_role.arn
+  value       = aws_iam_role.lambda_role.arn
 }
 
 output "scheduler_role_arn" {
